@@ -17,6 +17,54 @@ import asyncio
 from telegram import Bot
 from telegram.error import TelegramError
 
+class SimpleNvidiaAgent:
+    """Basitlestirilmis NVIDIA analiz ajani - sadece tek hisse icin"""
+    
+    def __init__(self, agent_id, price, secretary, model):
+        self.agent_id = agent_id
+        self.current_price = price
+        self.secretary = secretary
+        self.model = model
+        self.chat_history = []
+        
+    def analyze(self):
+        """NVIDIA icin AL/SAT/BEKLE karari ver"""
+        import openai
+        
+        prompt = f"""You are a stock analyst. Analyze NVIDIA (NVDA) stock.
+
+Current Price: ${self.current_price:.2f}
+
+Make a decision: BUY, SELL, or HOLD
+
+Respond ONLY with JSON:
+{{"action": "buy"}}  or  {{"action": "sell"}}  or  {{"action": "hold"}}
+"""
+        
+        try:
+            client = openai.OpenAI(api_key=util.OPENAI_API_KEY)
+            response = client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
+                max_tokens=50
+            )
+            
+            result = response.choices[0].message.content.strip()
+            
+            # JSON parse et
+            import re
+            if '"buy"' in result.lower() or '"action": "buy"' in result.lower():
+                return "buy"
+            elif '"sell"' in result.lower() or '"action": "sell"' in result.lower():
+                return "sell"
+            else:
+                return "hold"
+                
+        except Exception as e:
+            print(f"Agent {self.agent_id} hata: {e}")
+            return "hold"
+
 class NvidiaFinancialAdvisor:
     def __init__(self, model="gpt-4o-mini", num_agents=10, enable_telegram=True):
         self.model = model
@@ -246,31 +294,22 @@ class NvidiaFinancialAdvisor:
         }
     
     def get_ai_recommendation(self, stock):
-        """AI ajanlarından tavsiye al"""
+        """AI ajanlarından tavsiye al - Basitlestirilmis NVIDIA-only versiyon"""
         agents = []
         for i in range(self.num_agents):
-            agent = Agent(i, stock.get_price(), 0, self.secretary, self.model)
+            agent = SimpleNvidiaAgent(i, stock.get_price(), self.secretary, self.model)
             agents.append(agent)
         
         buy_votes = 0
         sell_votes = 0
         hold_votes = 0
         
-        stock_deals = {"sell": [], "buy": []}
-        
         for agent in agents:
-            action = agent.plan_stock(
-                date=1,
-                time=1,
-                stock_a=stock,
-                stock_b=Stock("B", 0, 0, is_new=False, symbol=None),
-                stock_a_deals=stock_deals,
-                stock_b_deals={"sell": [], "buy": []}
-            )
+            decision = agent.analyze()
             
-            if action["action_type"] == "buy":
+            if decision == "buy":
                 buy_votes += 1
-            elif action["action_type"] == "sell":
+            elif decision == "sell":
                 sell_votes += 1
             else:
                 hold_votes += 1
